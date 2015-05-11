@@ -1,0 +1,101 @@
+; -*- Hen -*-
+
+(define (dynld-name fn)		
+  (make-pathname #f fn ##sys#load-dynamic-extension))	
+
+(include "picnic-version.scm")
+
+(use make)
+
+(make (
+       ("calc.yy.scm" ("calc.grm")
+        (run (csi -s calc.grm)))
+
+       ((dynld-name "picnic-utils") ("picnic-utils.scm" "calc.yy.scm")
+	(compile -O -d2 -S -s picnic-utils.scm -j picnic-utils))
+
+       ((dynld-name "picnic-utils.import") ("picnic-utils.import.scm")
+	(compile -O2 -s picnic-utils.import.scm)) 
+       )
+  (list (dynld-name "picnic-utils")
+	(dynld-name "picnic-utils.import"))
+  )
+
+(install-extension
+
+  ; Name of your extension:
+  'picnic-utils
+
+  ; Files to install for your extension:
+  `(,(dynld-name "picnic-utils") ,(dynld-name "picnic-utils.import")) 
+
+  ; Assoc list with properties for your extension:
+  `((version ,picnic-version)))
+
+(make (
+       ((dynld-name "picnic-core") ("picnic-core.scm")
+	(compile -O -d2 -S -s picnic-core.scm -j picnic-core))
+
+       ((dynld-name "picnic-core.import") ("picnic-core.import.scm")
+	(compile -O2 -s picnic-core.import.scm))
+       )
+  (list (dynld-name "picnic-core")
+	(dynld-name "picnic-core.import"))
+  )
+
+(install-extension
+
+  ; Name of your extension:
+  'picnic-core
+
+  ; Files to install for your extension:
+  `(,(dynld-name "picnic-core") ,(dynld-name "picnic-core.import"))
+
+  ; Assoc list with properties for your extension:
+  `((version ,picnic-version)))
+
+
+(if (deployment-mode)
+
+    (begin
+      (run (csi -s expr.grm))
+      (compile -deploy -uses files -O -d2 picnic.scm 
+               -o ,(installation-prefix))
+      )
+
+    (begin
+      (make (
+             ("expr.grm.scm" ("expr.grm")
+              (run (csi -s expr.grm)))
+
+             ("picnic" ("picnic.scm" "expr.grm.scm")
+              (compile -O -d2 picnic.scm))
+             )
+        "picnic")
+      
+      (install-program 
+       'picnic 
+       
+       `("picnic" )
+       
+       `((version ,picnic-version)
+         ))
+      )
+    )
+
+;; From setup-header.scm by Kon Lovett
+
+(define (installation-chicken-home)
+  (if (not (installation-prefix)) (chicken-home)
+    (make-pathname `(,(installation-prefix) "share") "chicken") ) )
+
+;;; Constants & Procedures
+
+(define SHARED-DIR (installation-chicken-home))
+(define PICNIC-DIR (make-pathname SHARED-DIR "picnic"))
+
+;; File Copy Operations
+
+(define (copy-file-to-picnic-dir fn)
+  (let ([fn (->string fn)])
+    (copy-file fn (make-pathname PICNIC-DIR fn)) ) )

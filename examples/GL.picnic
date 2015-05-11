@@ -1,0 +1,230 @@
+;;
+;; A model of the projections between Golgi and granule cells in
+;; cerebellar granular layer.
+;;
+;; Copyright 2012-2014 Ivan Raikov and the Okinawa Institute of Science and Technology
+;;
+;; This program is free software: you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the
+;; License, or (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+;;
+;; A full copy of the GPL license can be found at
+;; <http://www.gnu.org/licenses/>.
+;;
+
+(picnic-model GL
+
+      (
+
+       (const PFlength   = 1500)
+
+       (const PCLdepth   = 200)
+
+       (const nAxons     = 10)
+       (const Axminx     = -100)
+       (const Axmaxx     = 100)
+       (const Axminy     = -100)
+       (const Axmaxy     = 100)
+       (const Axminz     = -10)
+       (const Axmaxz     = -30)
+
+       (const nApical         = 2)
+       (const nBasolateral    = 2)
+
+       (const Anseg      = 3 )
+       (const Bnseg      = 5 )
+       (const Ansegpts   = 5 )
+       (const Bnsegpts   = 5 )
+
+       (const Adendh     = 160.0 )
+       (const Bdendh     = 66.0 )
+       (const Aradius    = 10.0 )
+       (const Bradius    = 6.0 )
+       (const AthetaMean = 10.0 )
+       (const BthetaMean = 10.0 )
+       (const AthetaSdev = 1.0 )
+       (const BthetaSdev = 1.0 )
+
+       (const PFtoGoCzone = 5.0)
+       (const AAtoGoCzone = 5.0)
+
+       (const nGC  = 400)
+       (const nGoC = 1)
+
+       (const xExtent = PFlength)
+       (const yExtent = 1000)
+
+       (component (type local-cell-forest) (name GC)
+
+
+         (component (type layout) (name GranuleTcoordinates)
+
+                    (s = (PointsFromFile ("GCTcoordinates1.dat")))
+		  
+                    (output s)
+            )
+
+         (component (type section) (name AscendingAxons)
+                    
+                    (defun f (gid origin)
+                      (let ((dX 0)
+                            (dY 0)
+                            (dZ (neg (PCLdepth))))
+                        LineSegment (origin dX dY dZ)
+                        ))
+
+                    (const n = 1)
+
+                    (p (u) = (generator f) (npts 4))
+                    
+                    (output u n)
+
+                    )
+         
+         
+         (component (type section) (name ParallelFibers)
+
+                    (defun f (gid origin)
+                      (let ((dX (PFlength / 2))
+                            (dY 0)
+                            (dZ 0))
+                        LineSegment (origin dX dY dZ)))
+
+                    (defun g (gid origin)
+                      (let ((dX (PFlength / 2))
+                            (dY 0)
+                            (dZ 0))
+                        LineSegment (origin ~ (neg (dX)) ~ dY ~ dZ)))
+                    
+                    (const n = 1)
+
+                    ;; process u grows in the positive X direction
+                    ;; process v grows in the negative X direction
+                    (p (u) = (generator f) (npts 200))
+                    (p (v) = (generator g) (npts 200))
+                    
+                    (output u n v n)
+
+                    )
+         
+         
+
+         )
+         
+
+       (component (type cell-forest) (name GoC)
+
+         (component (type layout) (name GolgiCoordinates)
+
+                    (s = (PointsFromFile ("GoCcoordinates.dat")))
+		  
+                    (output s)
+            )
+         
+         (component (type section) (name BasolateralDendrites)
+
+
+                    (defun f (gid origin init)
+                      (let (
+                            (thetaDeg (randomNormal (BthetaMean BthetaSdev init)))
+                            (theta    ((PI / 180.) * thetaDeg))
+
+                            (dX (Bradius * cos (theta)))
+                            (dY (Bradius * sin (theta)))
+                            (dZ Bdendh)
+                            )
+                    
+                        LineSegment (origin dX dY dZ)))
+
+                    (const n = nBasolateral)
+
+                    (segp (u) = (generator f) (initial (randomInit (13))) 
+                                (nsegs Bnseg) (nsegpts Bnsegpts))
+                    
+                    (output u n)
+
+                    )
+
+         (component (type section) (name ApicalDendrites)
+
+                    (defun f (gid origin init)
+                      (let (
+                            (thetaDeg (randomNormal (AthetaMean AthetaSdev init)))
+                            (theta    ((PI / 180.) * thetaDeg))
+
+                            (dX (Aradius * cos (theta)))
+                            (dY (Aradius * sin (theta)))
+                            (dZ Adendh)
+                            )
+                    
+                        LineSegment (origin dX dY dZ)))
+                    
+                    (const n = nApical)
+
+                    (segp (u) = (generator f) (initial (randomInit (17)))
+                                (nsegs Anseg) (nsegpts Ansegpts))
+                    
+                    (output u n)
+
+                    )
+
+         (component (type section) (name Axons)
+                    
+                    (const n = nAxons)
+
+                    (defun f (gid origin init)
+                      (let ((dX (randomUniform (Axminx Axmaxx init)))
+                            (dY (randomUniform (Axminy Axmaxy init)))
+                            (dZ (randomUniform (Axminz Axmaxz init))))
+                        LineSegment (origin dX dY dZ)))
+
+                    (p (u) = (generator f) (initial (randomInit (23))))
+                    
+                    (output u n)
+
+                    )
+
+         )
+
+       (component (type projection) 
+
+            (input (GC from cell-forests)
+                   (GoC from cell-forests))
+
+            (const r = PFtoGoCzone)
+
+            (set source = (section GC ParallelFibers))
+            (set target = (section GoC ApicalDendrites))
+
+            (PFtoGoC = (SegmentProjection (r source target)))
+
+            (output PFtoGoC)
+            )
+
+
+       (component (type projection) 
+
+            (input (GC from cell-forests)
+                   (GoC from cell-forests))
+
+            (const r = AAtoGoCzone)
+
+            (set source = (section GC AscendingAxons))
+            (set target = (union
+                           (section GoC ApicalDendrites)
+                           (section GoC BasolateralDendrites)
+                           ))
+
+            (AAtoGoC = (SegmentProjection (r source target)))
+
+            (output AAtoGoC)
+            )
+
+       
+       ))

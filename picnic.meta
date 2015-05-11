@@ -1,0 +1,32 @@
+; -*- Hen -*-
+
+((egg "picnic.egg") ; This should never change
+
+ ; List here all the files that should be bundled as part of your egg.  
+
+ (files "picnic.meta" "picnic.setup" "picnic-core.scm" "picnic.scm" "picnic-utils.scm" 
+        "calc-parser.scm" "expr-parser.scm" "calc.grm"
+        "tests" 
+        )
+
+ ; Your egg's license:
+
+ (license "GPL-3")
+
+ ; Pick one from the list of categories (see below) for your egg and
+ ; enter it here.
+
+ (category parsing)
+
+ ; A list of eggs picnic depends on.
+
+ (needs make matchable (iexpr 1.8) regex
+	datatype vector-lib digraph graph-bfs graph-dfs graph-cycles 
+	mathh (varsubst 1.3) (lalr 2.4.2) ersatz getopt-long
+        typeclass kd-tree (parametric-curve 1.11) bvsp-spline 
+        random-mtzig mpi srfi-63)
+
+ (author "Ivan Raikov")
+
+ (synopsis "A description language for neuroanatomical structures and geometric connectivity."))
+
