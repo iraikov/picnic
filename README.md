@@ -370,7 +370,7 @@ Declares a system component (a quantity that can contain other quantities).
 ## License
 
 >
-> Copyright 2012-2014 Ivan Raikov and the Okinawa Institute of Science and Technology.
+> Copyright 2012-2015 Ivan Raikov.
 > 
 > This program is free software: you can redistribute it and/or modify
 > it under the terms of the GNU General Public License as published by

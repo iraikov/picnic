@@ -1,7 +1,7 @@
 ;;
 ;; Neural Parametric Curve Connectivity core language module.
 ;;
-;; Copyright 2012-2014 Ivan Raikov and the Okinawa Institute of Science and Technology
+;; Copyright 2012-2015 Ivan Raikov.
 ;;
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -120,14 +120,14 @@
             `(
               (import mathh random-mtzig)
               (define (random-seed) (inexact->exact (current-seconds)))
-              (define (random-init seed) (random-mtzig:init seed))
+              (define (random-init seed) (init seed))
               (define (random-normal mean sdev st)
-                (+ mean (* sdev (random-mtzig:randn! st))))
+                (+ mean (* sdev (randn! st))))
               (define (random-uniform low high st)
                 (let ((rlo (if (< low high) low high))
                       (rhi (if (< low high) high low))) 
                   (let ((delta (+ 1 (- rhi rlo)))
-                        (v (random-mtzig:randu! st)))
+                        (v (randu! st)))
                     (+ rlo (floor (* delta v))) ))
                 )
               ))

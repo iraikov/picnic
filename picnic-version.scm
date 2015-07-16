@@ -1,2 +1,2 @@
 
-(define picnic-version "1.3")
+(define picnic-version "1.5")

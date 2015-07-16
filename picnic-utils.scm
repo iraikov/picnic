@@ -1,7 +1,7 @@
 ;;
 ;; Neural Parametric Curve Connectivity spatial and geometric utility procedures.
 ;;
-;; Copyright 2012-2014 Ivan Raikov and the Okinawa Institute of Science and Technology
+;; Copyright 2012-2015 Ivan Raikov.
 ;;
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -69,20 +69,20 @@
 
         (define (f64vector-empty? x) (zero? (f64vector-length x)))
 
-        (define (random-init seed) (random-mtzig:init seed))
+        (define (random-init seed) (init seed))
 
         (define (random-uniform low high st)
           (let ((rlo (if (< low high) low high))
                 (rhi (if (< low high) high low))) 
             (let ((delta (+ 1 (- rhi rlo)))
-                  (v (random-mtzig:randu! st)))
+                  (v (randu! st)))
               (+ rlo (floor (* delta v)))
               ))
           )
 
 
         (define (random-normal mean sdev st)
-          (+ mean (* sdev (random-mtzig:randn! st))))
+          (+ mean (* sdev (randn! st))))
 
         (import-instance (<KdTree> KdTree3d)
                          (<Point> Point3d))
@@ -748,9 +748,9 @@
                  (z-extent-function (boundary-z-extent-function boundary))
                  )
 
-            (let ((x-points (random-mtzig:f64vector-randu! (inexact->exact n) (random-mtzig:init x-seed)))
-                  (y-points (random-mtzig:f64vector-randu! (inexact->exact n) (random-mtzig:init y-seed)))
-                  (z-points (random-mtzig:f64vector-randu! (inexact->exact n) (random-mtzig:init (current-milliseconds)))))
+            (let ((x-points (f64vector-randu! (inexact->exact n) (init x-seed)))
+                  (y-points (f64vector-randu! (inexact->exact n) (init y-seed)))
+                  (z-points (f64vector-randu! (inexact->exact n) (init (current-milliseconds)))))
               
               (let ((point-rejection1 (point2d-rejection top left bottom right)))
                 
@@ -794,9 +794,9 @@
 
             (let recur ((pts '()) (x-seed x-seed) (y-seed y-seed))
 
-              (let ((x-points (random-mtzig:f64vector-randu! n (random-mtzig:init x-seed)))
-                    (y-points (random-mtzig:f64vector-randu! n (random-mtzig:init y-seed)))
-                    (z-points (random-mtzig:f64vector-randu! n (random-mtzig:init (current-milliseconds)))))
+              (let ((x-points (f64vector-randu! n (init x-seed)))
+                    (y-points (f64vector-randu! n (init y-seed)))
+                    (z-points (f64vector-randu! n (init (current-milliseconds)))))
                 
                 (let ((point-rejection1 (point2d-rejection top left bottom right)))
                   
