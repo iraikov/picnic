@@ -37,7 +37,7 @@
         (import 
                 (only srfi-1 
                       fold fold-right filter-map filter every zip list-tabulate delete-duplicates partition 
-                      first second third take concatenate)
+                      first second third take drop concatenate)
                 (only srfi-4 
                       s32vector s32vector-length s32vector-ref s32vector-set! make-s32vector
                       f64vector f64vector? f64vector-ref f64vector-set! f64vector-length f64vector->list list->f64vector make-f64vector)
@@ -122,6 +122,14 @@
           (coords swcpoint-coords)
           (radius swcpoint-radius)
           (pre swcpoint-pre)
+          )
+
+        (define-record-type layer-point (make-layer-point id coords radius layer)
+          layer-point? 
+          (id layer-point-id)
+          (coords layer-point-coords)
+          (radius layer-point-radius)
+          (layer layer-point-layer)
           )
 
         
@@ -855,7 +863,7 @@
           )
 
 
-        (define (make-tree-graph lst label)
+        (define (make-swc-tree-graph lst label)
           
           (let* (
                  (g              (make-digraph label #f))
@@ -901,6 +909,96 @@
                       (recur (cdr lst))
                       ))
                   ))
+            g 
+            ))
+
+
+        (define (swc-tree-graph->section-points cell-index cell-origin type g gdistv gsegv)
+          
+          (let* ((node-info (g 'node-info))
+                 (succ      (g 'succ))
+                 (offset    (let ((cell-loc (point->list cell-origin))
+                                  (root-loc (point->list (swcpoint-coords (node-info 1)))))
+                              (map - cell-loc root-loc))))
+
+            (d "swc-tree-graph->section-points: offset = ~A~%" offset)
+
+
+            (let recur ((n 1) (lst '()))
+
+              (let* (
+                     (point (node-info n))
+                     (point-type (swcpoint-type point))
+                     (point-pre (swcpoint-pre point))
+                     (proceed? (or (= point-type type)
+                                   (case (swcpoint-type point)
+                                     ((0 1 5 6) #t)
+                                     (else #f))))
+                     )
+
+                (d "swc-tree-graph->section-points: n = ~A point-type = ~A proceed? = ~A~%" 
+                   n point-type proceed?)
+
+                (d "swc-tree-graph->section-points: succ n = ~A~%" (succ n))
+                  
+                (if proceed?
+
+                    (let (
+                          (point1 (list
+                                   (s32vector-ref gsegv n)
+                                   (apply make-point (map + offset (point->list (swcpoint-coords point))))))
+                          )
+
+                      (fold (lambda (x ax) (recur x ax))
+                            (cons point1 lst)
+                            (succ n)))
+
+                    lst)
+
+                ))
+            ))
+
+
+        (define (make-layer-tree-graph topology-sections topology-layers topology points label)
+          
+          (let* (
+                 (g              (make-digraph label topology-layers))
+                 (node-info      (g 'node-info))
+                 (node-info-set! (g 'node-info-set!))
+                 (add-node!      (g 'add-node!))
+                 (add-edge!      (g 'add-edge!))
+                 )
+
+            ;; insert nodes
+            (let recur ((lst points))
+
+              (if (not (null? lst))
+
+                  (let ((point (car lst)))
+
+                    (let ((node-id (layer-point-id point)))
+
+                      (add-node! node-id point)
+
+                      (recur (cdr lst))))))
+
+            ;; insert edges
+            (let recur ((lst topology))
+              
+              (if (not (null? lst))
+                  
+                  (match-let (((dest-id src-id) (car lst)))
+
+                             (let* ((dest-point   (node-info dest-id))
+                                    (dest-coords  (and dest-point (layer-point-coords dest-point)))
+                                    (node-coords  (layer-point-coords src-id))
+                                    (distance     (sqrt (dist2 dest-coords node-coords))))
+
+                               (add-edge! (list src-id dest-id distance))))
+                  
+                  (recur (cdr lst))
+                  ))
+
             g 
             ))
 
@@ -969,51 +1067,6 @@
           ))
 
 
-        (define (tree-graph->section-points cell-index cell-origin type g gdistv gsegv)
-          
-          (let* ((node-info (g 'node-info))
-                 (succ      (g 'succ))
-                 (offset    (let ((cell-loc (point->list cell-origin))
-                                  (root-loc (point->list (swcpoint-coords (node-info 1)))))
-                              (map - cell-loc root-loc))))
-
-            (d "tree-graph->section-points: offset = ~A~%" offset)
-
-
-            (let recur ((n 1) (lst '()))
-
-              (let* (
-                     (point (node-info n))
-                     (point-type (swcpoint-type point))
-                     (point-pre (swcpoint-pre point))
-                     (proceed? (or (= point-type type)
-                                   (case (swcpoint-type point)
-                                     ((0 1 5 6) #t)
-                                     (else #f))))
-                     )
-
-                (d "tree-graph->section-points: n = ~A point-type = ~A proceed? = ~A~%" 
-                   n point-type proceed?)
-
-                (d "tree-graph->section-points: succ n = ~A~%" (succ n))
-                  
-                (if proceed?
-
-                    (let (
-                          (point1 (list
-                                   (s32vector-ref gsegv n)
-                                   (apply make-point (map + offset (point->list (swcpoint-coords point))))))
-                          )
-
-                      (fold (lambda (x ax) (recur x ax))
-                            (cons point1 lst)
-                            (succ n)))
-
-                    lst)
-
-                ))
-            ))
-
   
         (define (load-swc filename label type nseg)
           
@@ -1039,7 +1092,7 @@
                          ))
                      lines))
 
-                   (swc-graph (make-tree-graph swc-data label))
+                   (swc-graph (make-swc-tree-graph swc-data label))
 
                    (dist+segs  (tree-graph-distances+segments swc-graph nseg))
 
@@ -1047,6 +1100,7 @@
 
               (cons type (cons swc-graph dist+segs)))
           ))
+
 
 
         (define (load-swcdir path label type nseg)
@@ -1064,7 +1118,90 @@
               (map (lambda (fn) (load-swc fn label type nseg)) (sort flst string<?))
               ))
           )
+
           
+        (define (load-layer-tree nlayers topology-filename points-filename label type)
+          
+          (let (
+                (topology-in (open-input-file topology-filename))
+                (points-in (open-input-file points-filename))
+                )
+            
+            (if (not topology-in) (error 'load-layer-tree "topology file not found" topology-filename))
+            (if (not points-in) (error 'load-layer-tree "points file not found" points-filename))
+            
+            (let* (
+                   (topology-lines
+                    (let ((lines (read-lines topology-in)))
+                      (close-input-port topology-in)
+                      (filter (lambda (line) (not (irregex-match comment-pat line))) lines)))
+
+                   (points-lines
+                    (let ((lines (read-lines points-in)))
+                      (close-input-port points-in)
+                      (filter (lambda (line) (not (irregex-match comment-pat line))) lines)))
+
+                   (topology-layers
+                    (let ((layer-lines (take topology-lines nlayers)))
+                      (fold (match-lambda* (((line (i lst)))
+                                            (match-let (((npts . pt-ids) (map string->number (string-split line " \t"))))
+                                                       (if (= (length pt-ids) npts)
+                                                           (list (+ 1 i) (cons (cons i pt-ids) lst))
+                                                           (error 'load-layer-tree "number of points mismatch in layer description" npts pt-ids))
+                                                       )))
+                            '((0 ())) layer-lines)))
+
+                   (topology-sections
+                    (let ((rest-lines (drop topology-lines nlayers)))
+                      (let ((sections-line (car rest-lines)))
+                        (match-let (((nsections section-numbers) (map string->number (string-split sections-line " \t"))))
+                                   (if (not (= nsections (length section-numbers)))
+                                       (error 'load-layer-tree "number of sections mismatch in section description"))
+                                   section-numbers))
+                      ))
+
+                   (topology-data
+                    (let ((rest-lines (drop topology-lines (+ 1 nlayers))))
+                      (let ((topology-dims-line (car rest-lines))
+                            (topology-lines (cdr rest-lines)))
+                        (match-let (((m n) (map string->number (string-split topology-dims-line " \t"))))
+                                   (if (not (= n 2)) 
+                                       (error 'load-layer-tree "invalid topology dimensions" m n))
+                                   (if (not (= m (length topology-lines))) 
+                                       (error 'load-layer-tree "topology dimensions mismatch" m n))
+                                   (map (lambda (line) (map string->number (string-split line " \t"))) topology-lines))
+                        ))
+                    )
+
+                   (points-lines 
+                    (let ((points-header (map string->number (string-split (car points-lines) " \t"))))
+                      (if (not (= (car points-header) (length (cdr points-lines))))
+                          (error 'load-layer-tree "number of points mismatch in points matrix" points-header))
+                      (cdr points-lines)))
+
+                   (points-data
+                    (fold
+                     (match-lambda* (((line (id lst)))
+                                     (let ((pt (map string->number (string-split points-lines " \t"))))
+                                       (if (null? lst) (list id lst)
+                                           (match-let (((x y z radius) pt))
+                                                      (let ((layer (alist-ref id topology-layers)))
+                                                        (list (+ 1 id)
+                                                              (cons (make-layer-point id (make-point x y z) radius layer) lst))
+                                                        ))
+                                           ))
+                                     ))
+                     '(0 ())
+                     (cdr points-lines)))
+
+                   (tree-graph (make-layer-tree-graph topology-sections topology-layers topology-data points-data label))
+
+                   )
+
+              (cons type tree-graph))
+          ))
+
+
 
         (define (segment-projection label source-tree target-sections zone my-comm myrank size)
 
