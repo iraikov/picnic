@@ -982,9 +982,11 @@
 
                       (recur (cdr lst))))))
 
-            ;; insert edges
-            (let recur ((lst topology))
+            ;; insert edges from dendritic topology
+            (let recur ((lst (car topology)))
               
+              (print "lst = " lst)
+
               (if (not (null? lst))
                   
                   (match-let (((dest-id src-id) (car lst)))
@@ -1119,6 +1121,18 @@
               ))
           )
 
+
+        (define (load-matrix-from-lines lines)
+          (let ((dimensions-line (car lines)))
+            (match-let (((m n) (map string->number (string-split dimensions-line " \t"))))
+                       (print "load-matrix: lines = " lines)
+                       (let ((matrix-lines (take (cdr lines) m))
+                             (rest-lines (drop (cdr lines) m)))
+                         `(,m ,n
+                              ,(map (lambda (line) (map string->number (string-split line " \t"))) matrix-lines)
+                              ,rest-lines)))
+            ))
+
           
         (define (load-layer-tree nlayers topology-filename points-filename label type)
           
@@ -1143,36 +1157,40 @@
 
                    (topology-layers
                     (let ((layer-lines (take topology-lines nlayers)))
-                      (fold (match-lambda* (((line (i lst)))
-                                            (match-let (((npts . pt-ids) (map string->number (string-split line " \t"))))
-                                                       (if (= (length pt-ids) npts)
-                                                           (list (+ 1 i) (cons (cons i pt-ids) lst))
-                                                           (error 'load-layer-tree "number of points mismatch in layer description" npts pt-ids))
+                      (print "layer-lines = ") (pp layer-lines)
+                      (fold (match-lambda* ((line (i lst))
+                                            (print "line = " line)
+                                            (match-let (((nsecs . sec-ids) (map string->number (string-split line " \t"))))
+                                                       (print "nsecs = " nsecs)
+                                                       (print "sec-ids = " sec-ids)
+                                                       (if (= (length sec-ids) nsecs)
+                                                           (list (+ 1 i) (cons (cons i sec-ids) lst))
+                                                           (error 'load-layer-tree "number of sections mismatch in layer description" nsecs sec-ids))
                                                        )))
-                            '((0 ())) layer-lines)))
+                            '(0 ()) layer-lines)))
 
                    (topology-sections
                     (let ((rest-lines (drop topology-lines nlayers)))
-                      (let ((sections-line (car rest-lines)))
-                        (match-let (((nsections section-numbers) (map string->number (string-split sections-line " \t"))))
-                                   (if (not (= nsections (length section-numbers)))
+                      (let ((points-sections-line (car rest-lines)))
+                        (print "points-sections-line = " points-sections-line)
+                        (match-let (((nsections . point-numbers) (map string->number (string-split points-sections-line " \t"))))
+                                   (if (not (= nsections (length point-numbers)))
                                        (error 'load-layer-tree "number of sections mismatch in section description"))
-                                   section-numbers))
+                                   point-numbers))
                       ))
 
                    (topology-data
                     (let ((rest-lines (drop topology-lines (+ 1 nlayers))))
-                      (let ((topology-dims-line (car rest-lines))
-                            (topology-lines (cdr rest-lines)))
-                        (match-let (((m n) (map string->number (string-split topology-dims-line " \t"))))
-                                   (if (not (= n 2)) 
-                                       (error 'load-layer-tree "invalid topology dimensions" m n))
-                                   (if (not (= m (length topology-lines))) 
-                                       (error 'load-layer-tree "topology dimensions mismatch" m n))
-                                   (map (lambda (line) (map string->number (string-split line " \t"))) topology-lines))
-                        ))
-                    )
-
+                      (match-let (((mdend ndend tdend rest-lines) (load-matrix-from-lines rest-lines)))
+                                 (if (not (= ndend 2)) 
+                                     (error 'load-layer-tree "invalid dendrite topology dimensions" mdend ndend))
+                                   (match-let (((msoma nsoma tsoma rest-lines) (load-matrix-from-lines rest-lines)))
+                                              (if (not (= nsoma 2)) 
+                                                  (error 'load-layer-tree "invalid soma topology dimensions" msoma nsoma))
+                                              (list tdend tsoma)
+                                              ))
+                      ))
+            
                    (points-lines 
                     (let ((points-header (map string->number (string-split (car points-lines) " \t"))))
                       (if (not (= (car points-header) (length (cdr points-lines))))
@@ -1180,27 +1198,30 @@
                       (cdr points-lines)))
 
                    (points-data
-                    (fold
-                     (match-lambda* (((line (id lst)))
-                                     (let ((pt (map string->number (string-split points-lines " \t"))))
-                                       (if (null? lst) (list id lst)
-                                           (match-let (((x y z radius) pt))
-                                                      (let ((layer (alist-ref id topology-layers)))
-                                                        (list (+ 1 id)
-                                                              (cons (make-layer-point id (make-point x y z) radius layer) lst))
-                                                        ))
-                                           ))
-                                     ))
-                     '(0 ())
-                     (cdr points-lines)))
+                    (cadr
+                     (fold
+                      (match-lambda* ((line (id lst))
+                                      (let ((pt (map string->number (string-split line " \t"))))
+                                        (if (null? lst) (list id lst)
+                                            (match-let (((x y z radius) pt))
+                                                       (let ((layer (alist-ref id topology-layers)))
+                                                         (list (+ 1 id)
+                                                               (cons (make-layer-point id (make-point x y z) radius layer) lst))
+                                                         ))
+                                            ))
+                                      ))
+                      '(0 ())
+                      (cdr points-lines))))
+
 
                    (tree-graph (make-layer-tree-graph topology-sections topology-layers topology-data points-data label))
 
                    )
 
-              (cons type tree-graph))
-          ))
+            (cons type tree-graph)
 
+            ))
+          )
 
 
         (define (segment-projection label source-tree target-sections zone my-comm myrank size)
