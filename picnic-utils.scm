@@ -1,7 +1,7 @@
 ;;
 ;; Neural Parametric Curve Connectivity spatial and geometric utility procedures.
 ;;
-;; Copyright 2012-2015 Ivan Raikov.
+;; Copyright 2012-2016 Ivan Raikov.
 ;;
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -491,6 +491,67 @@
 
 
 
+        (define (layer-point-projection prefix my-comm myrank size cells fibers zone cell-start fiber-start)
+
+          (d "rank ~A: prefix = ~A zone = ~A length cells = ~A~%" 
+             myrank prefix zone (length cells))
+
+          (fold (lambda (cell ax)
+
+                  (d "rank ~A: cell = ~A~%" myrank cell)
+
+                  (let* ((i (+ cell-start (car cell)))
+                         (root (modulo i size))
+                         (sections (cadr cell)))
+                    
+                    (fold 
+                     
+                     (lambda (secg ax)
+                       (let ((query-data
+                              ((secg 'fold-nodes)
+                               (lambda (i lp ax)
+                                 (d "rank ~A: querying point ~A (layer ~A)~%" 
+                                    myrank (layer-point-coords lp) 
+                                    (layer-point-layer lp))
+                                 (fold
+                                  (lambda (x ax) 
+                                    (let (
+                                          (source (car x))
+                                          (target i)
+                                          (distance (cadr x))
+                                          (layer (layer-point-layer lp))
+                                          )
+                                      (append (list source target distance layer) ax)
+                                      ))
+                                  ax
+                                  (delete-duplicates
+                                   (map (lambda (x) 
+                                          (d "rank ~A: query result = ~A (~A) (~A) ~%" 
+                                             myrank (kdnn-point x) (kdnn-distance x) (kdnn-parent-index x))
+                                          (list (+ fiber-start (kdnn-parent-index x))
+                                                (+ (kdnn-distance x) (kdnn-parent-distance x))
+                                                ))
+                                        (kd-tree-near-neighbors* fibers zone (layer-point-coords lp)))
+                                   (lambda (u v) (= (car u) (car v)))
+                                   )
+                                  ))
+                               '()))
+                             )
+                         
+                         (let* ((res0 (MPI:gatherv-f64vector (list->f64vector query-data) root my-comm))
+                                
+                                (res1 (or (and (= myrank root) (filter (lambda (x) (not (f64vector-empty? x))) res0)) '())))
+                           
+                           (append res1 ax))
+                         
+                         ))
+                     ax sections)
+                    ))
+                '() cells)
+          )
+
+
+
         (define (genpoint-projection prefix my-comm myrank size cells fibers zone cell-start fiber-start)
 
           (d "rank ~A: prefix = ~A zone = ~A length cells = ~A~%" myrank prefix zone (length cells))
@@ -554,7 +615,6 @@
                     ))
                 '() cells)
           )
-
 
         
 
@@ -1162,14 +1222,14 @@
                    (topology-layers
                     (cadr
                      (let ((layer-lines (take topology-lines nlayers)))
-                       (fold (match-lambda* 
-                              ((line (i lst))
-                               (match-let (((nsecs . sec-ids) (map string->number (string-split line " \t"))))
-                                          (if (= (length sec-ids) nsecs)
-                                              (list (+ 1 i) (cons (cons i sec-ids) lst))
-                                              (error 'load-layer-tree "number of sections mismatch in layer description" nsecs sec-ids))
-                                          )))
-                             '(0 ()) layer-lines))))
+                       (fold-right (match-lambda* 
+                                    ((line (i lst))
+                                     (match-let (((nsecs . sec-ids) (map string->number (string-split line " \t"))))
+                                                (if (= (length sec-ids) nsecs)
+                                                    (list (+ 1 i) (cons sec-ids lst))
+                                                    (error 'load-layer-tree "number of sections mismatch in layer description" nsecs sec-ids))
+                                                )))
+                                   '(0 ()) layer-lines))))
 
                    (topology-sections
                     (let ((rest-lines (drop topology-lines nlayers)))
@@ -1199,23 +1259,28 @@
                       (cdr points-lines)))
 
                    (points-data
-                    (cadr
-                     (fold
-                      (match-lambda* ((line (id lst))
-                                      (let ((pt (map string->number (string-split line " \t"))))
-                                        (match-let (((x y z radius) pt))
-                                                   (let ((layer (find-index (lambda (layer) (member id layer)) topology-layers)))
-                                                     (list (+ 1 id)
-                                                           (cons (make-layer-point id (make-point x y z) radius layer) lst))
-                                                     ))
-                                        ))
-                                     )
-                      '(0 ())
-                      (cdr points-lines))))
-
+                     (let recur ((id 0) (pts '()) (seci 0) (secs topology-sections) (lines points-lines))
+                       (if (null? secs) pts
+                           (let* (
+                                  (npts1 (car secs))
+                                  (id.pts1 (fold 
+                                            (match-lambda* 
+                                             ((line (id . lst))
+                                              (let ((pt (map string->number (string-split line " \t"))))
+                                                (match-let (((x y z radius) pt))
+                                                           (let ((layer (find-index (lambda (layer) (member seci layer)) topology-layers)))
+                                                             (cons (+ 1 id)
+                                                                   (cons (make-layer-point id (make-point x y z) radius layer) lst))
+                                                             ))
+                                                )))
+                                             (cons id pts)
+                                             (take lines npts1)))
+                                  )
+                             (recur (car id.pts1) (cdr id.pts1) (+ 1 seci) (cdr secs) (drop lines npts1))
+                             ))
+                       ))
 
                    (tree-graph (make-layer-tree-graph topology-sections topology-layers topology-data points-data label))
-
                    )
               
               tree-graph
@@ -1224,6 +1289,50 @@
           )
 
 
+        (define (layer-tree-projection label source-tree target-sections zone my-comm myrank size)
+
+          (MPI:barrier my-comm)
+	  
+          (let ((my-results
+                 (layer-point-projection label my-comm myrank size target-sections source-tree zone 0 0)))
+
+            (MPI:barrier my-comm)
+
+            (call-with-output-file (sprintf "~Asources~A.dat"  label (if (> size 1) myrank ""))
+              (lambda (out-sources)
+                (call-with-output-file (sprintf "~Atargets~A.dat"  label (if (> size 1) myrank ""))
+                  (lambda (out-targets)
+                    (call-with-output-file (sprintf "~Adistances~A.dat"  label (if (> size 1) myrank ""))
+                      (lambda (out-distances)
+                        (call-with-output-file (sprintf "~Alayers~A.dat"  label (if (> size 1) myrank ""))
+                          (lambda (out-layers)
+                            (for-each 
+                             (lambda (my-data)
+                               (let* ((my-entry-len 4)
+                                      (my-data-len (/ (f64vector-length my-data) my-entry-len)))
+                                 (d "rank ~A: length my-data = ~A~%" myrank my-data-len)
+                                 (let recur ((m 0))
+                                   (if (< m my-data-len)
+                                       (let* (
+                                              (my-entry-offset (* m my-entry-len))
+                                              (source (f64vector-ref my-data my-entry-offset))
+                                              (target (f64vector-ref my-data (+ 1 my-entry-offset)))
+                                              (distance (f64vector-ref my-data (+ 2 my-entry-offset)))
+                                              (layer (f64vector-ref my-data (+ 3 my-entry-offset)))
+                                              )
+                                         (fprintf out-sources   "~A~%" source)
+                                         (fprintf out-targets   "~A~%" target)
+                                         (fprintf out-distances "~A~%" distance)
+                                         (fprintf out-layers     "~A~%" layer)
+                                         (recur (+ 1 m)))))
+                                 ))
+                             my-results))
+                          ))
+                      ))
+                  ))
+              ))
+          )
+        
         (define (segment-projection label source-tree target-sections zone my-comm myrank size)
 
           (MPI:barrier my-comm)
