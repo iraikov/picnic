@@ -491,7 +491,7 @@
 
 
 
-        (define (layer-point-projection prefix my-comm myrank size cells fibers zone cell-start fiber-start)
+        (define (layer-point-projection prefix my-comm myrank size cells layers fibers zone cell-start fiber-start)
 
           (d "rank ~A: prefix = ~A zone = ~A length cells = ~A~%" 
              myrank prefix zone (length cells))
@@ -521,7 +521,9 @@
                                           (distance (cadr x))
                                           (layer (layer-point-layer lp))
                                           )
-                                      (append (list source target distance layer) ax)
+                                      (if (member layer layers)
+                                          (append (list source target distance layer) ax)
+                                          ax)
                                       ))
                                   ax
                                   (delete-duplicates
@@ -1289,12 +1291,12 @@
           )
 
 
-        (define (layer-tree-projection label source-tree target-sections zone my-comm myrank size)
+        (define (layer-tree-projection label source-tree target-sections target-layers zone my-comm myrank size)
 
           (MPI:barrier my-comm)
 	  
           (let ((my-results
-                 (layer-point-projection label my-comm myrank size target-sections source-tree zone 0 0)))
+                 (layer-point-projection label my-comm myrank size target-sections target-layers source-tree zone 0 0)))
 
             (MPI:barrier my-comm)
 
