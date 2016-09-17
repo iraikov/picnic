@@ -12,7 +12,7 @@
         (run (csi -s calc.grm)))
 
        ((dynld-name "picnic-utils") ("picnic-utils.scm" "calc.yy.scm")
-	(compile -O -d2 -S -s picnic-utils.scm -j picnic-utils))
+	(compile -O -d2 -S -s -I ,(repository-path) picnic-utils.scm -j picnic-utils))
 
        ((dynld-name "picnic-utils.import") ("picnic-utils.import.scm")
 	(compile -O2 -s picnic-utils.import.scm)) 
@@ -34,7 +34,7 @@
 
 (make (
        ((dynld-name "picnic-core") ("picnic-core.scm")
-	(compile -O -d2 -S -s picnic-core.scm -j picnic-core))
+	(compile -O -d2 -S -s -I ,(repository-path) picnic-core.scm -j picnic-core))
 
        ((dynld-name "picnic-core.import") ("picnic-core.import.scm")
 	(compile -O2 -s picnic-core.import.scm))
@@ -59,7 +59,7 @@
 
     (begin
       (run (csi -s expr.grm))
-      (compile -deploy -uses files -O -d2 picnic.scm 
+      (compile -deploy -uses files -O -d2 -I ,(repository-path) picnic.scm 
                -o ,(installation-prefix))
       )
 
@@ -69,7 +69,7 @@
               (run (csi -s expr.grm)))
 
              ("picnic" ("picnic.scm" "expr.grm.scm")
-              (compile -O -d2 picnic.scm))
+              (compile -O -d2 -I ,(repository-path) picnic.scm))
              )
         "picnic")
       
